@@ -290,53 +290,28 @@
     /* ── Tablet & Mobile (≤767px) ─────────────────── */
     @media (max-width: 767px) {
 
-      /* Mini HUD always visible at top */
-      #mini-hud {
-        display: flex;
-        position: absolute;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: calc(100% - 24px);
-        justify-content: space-between;
-        align-items: center;
-        z-index: 10;
-        background: var(--panel-bg);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid var(--border-cyan);
-        border-radius: 10px;
-        padding: 8px 14px;
-        font-size: 0.78rem;
-        gap: 8px;
-        pointer-events: none;
+      /* Hide controls and HUD on mobile */
+      #controls-bar, #mini-hud {
+        display: none !important;
       }
-      #mini-hud .hud-faces   { color: var(--accent-cyan); font-weight: bold; }
-      #mini-hud .hud-emotion { color: var(--accent-amber); font-weight: bold; flex: 1; text-align: center; font-size: 0.82rem; }
-      #mini-hud .hud-bio     { color: #ccc; font-size: 0.72rem; }
 
-      /* Stats panel: collapsed by default, slides up with .panel-open */
+      /* Stats panel permanently at the top on mobile */
       #stats-panel {
         position: absolute;
-        top: auto;
+        top: 10px;
+        bottom: auto;
         left: 50%;
         transform: translateX(-50%);
         width: calc(100% - 24px);
-        bottom: 76px;
-        max-height: 0;
-        overflow: hidden;
-        padding: 0 12px;
-        gap: 10px;
-        transition: max-height 0.35s ease, padding 0.3s ease;
-        scrollbar-width: thin;
-        scrollbar-color: var(--border-cyan) transparent;
-      }
-      #stats-panel.panel-open {
-        max-height: 52vh;
+        max-height: 85vh; /* Allow it to be tall if needed */
         overflow-y: auto;
         overscroll-behavior: contain;
         padding: 12px;
+        gap: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border-cyan) transparent;
       }
+
       #stats-panel::-webkit-scrollbar { width: 4px; }
       #stats-panel::-webkit-scrollbar-track { background: transparent; }
       #stats-panel::-webkit-scrollbar-thumb { background: var(--border-cyan); border-radius: 2px; }
@@ -349,47 +324,19 @@
       #history-log            { max-height: 55px; font-size: 0.68rem; }
 
       #no-face-hint {
-        top: 58px;
+        top: auto;
+        bottom: 20px;
         transform: translateX(-50%);
         font-size: 1rem;
         padding: 10px 18px;
         width: 80%;
         text-align: center;
       }
-
-      /* Show INFO toggle button */
-      #btn-toggle-panel { display: flex; align-items: center; justify-content: center; }
-
-      /* Controls bar */
-      #controls-bar {
-        position: absolute;
-        bottom: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: calc(100% - 24px);
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 10px 12px;
-      }
-
-      button {
-        flex: 1;
-        min-width: 100px;
-        max-width: 48%;
-        padding: 10px 8px;
-        font-size: 0.72rem;
-        min-height: 44px;
-      }
     }
 
     /* ── Small phones (≤400px) ───────────────────── */
     @media (max-width: 400px) {
-      #mini-hud { font-size: 0.7rem; padding: 7px 10px; }
-      #mini-hud .hud-bio { display: none; }
-
-      #stats-panel { bottom: 82px; width: calc(100% - 16px); padding: 0 10px; }
-      #stats-panel.panel-open { max-height: 48vh; padding: 10px; gap: 7px; }
+      #stats-panel { width: calc(100% - 16px); padding: 10px; gap: 7px; top: 8px; }
 
       .stat-row               { font-size: 0.72rem; }
       .dominant-emotion       { font-size: 0.95rem; }
@@ -397,9 +344,6 @@
       .emotion-name           { width: 46px; }
       .bar-value              { width: 28px; }
       #history-log            { max-height: 44px; font-size: 0.63rem; }
-
-      #controls-bar  { bottom: 8px; width: calc(100% - 16px); gap: 6px; padding: 8px 10px; }
-      button         { font-size: 0.65rem; padding: 8px 6px; min-width: 80px; }
     }
   </style>
 </head>
@@ -466,14 +410,6 @@
       <button id="btn-toggle-lm">LANDMARKS: ON</button>
       <button id="btn-snapshot">SNAPSHOT</button>
       <button id="btn-fullscreen">FULLSCREEN</button>
-      <button id="btn-toggle-panel">📊 INFO</button>
-    </div>
-
-    <!-- Mini HUD (mobile only — always visible) -->
-    <div id="mini-hud">
-      <span class="hud-faces" id="hud-faces">0 FACES</span>
-      <span class="hud-emotion" id="hud-emotion">ANALYZING 🤖</span>
-      <span class="hud-bio" id="hud-bio">—</span>
     </div>
   </div>
 
@@ -702,13 +638,6 @@
       const domPct = Math.round(maxScore * 100);
       domEmotion.innerText = `${domEmo} ${emojiMap[domEmo]} (${domPct}%)`;
 
-      // Update mini HUD (mobile)
-      document.getElementById('hud-faces').innerText = `${detections.length} FACE${detections.length !== 1 ? 'S' : ''}`;
-      document.getElementById('hud-emotion').innerText = `${emojiMap[domEmo]} ${domEmo.toUpperCase()}`;
-      const age = face.age !== undefined ? `~${Math.round(face.age)}yr` : '';
-      const gen = face.gender ? (face.gender === 'male' ? '♂' : '♀') : '';
-      document.getElementById('hud-bio').innerText = [gen, age].filter(Boolean).join(' ');
-
       // Interpretation
       let interp = "Calm and composed 🧘";
       if (domEmo === 'happy' || domEmo === 'surprised') interp = "You look joyful! 🌟";
@@ -925,15 +854,6 @@
         btnFullscreen.innerText = "FULLSCREEN";
         btnFullscreen.classList.remove('active');
       }
-    });
-
-    // INFO panel toggle (mobile)
-    const statsPanel = document.getElementById('stats-panel');
-    const btnTogglePanel = document.getElementById('btn-toggle-panel');
-    btnTogglePanel.addEventListener('click', () => {
-      const open = statsPanel.classList.toggle('panel-open');
-      btnTogglePanel.innerText = open ? '✕ HIDE' : '📊 INFO';
-      btnTogglePanel.classList.toggle('active', open);
     });
 
     // Start
