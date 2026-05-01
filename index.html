@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biometric Emotion Scanner</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+    rel="stylesheet">
+
+  <!-- face-api.js -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #0d0f1a;
+      --accent-cyan: #00f5ff;
+      --accent-amber: #ffb347;
+      --text-main: #e0e0e0;
+      --panel-bg: rgba(13, 15, 26, 0.6);
+      --border-cyan: rgba(0, 245, 255, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: 'Space Mono', monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Container for video and canvas */
+    #scanner-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    video {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scaleX(-1);
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: 1;
+    }
+
+    canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: 2;
+    }
+
+
+
+    /* Panels (Glassmorphism) */
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border-cyan);
+      border-radius: 12px;
+      padding: 15px;
+      z-index: 10;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Stats Panel */
+    #stats-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+
+    .stat-label {
+      color: var(--accent-cyan);
+      font-weight: bold;
+    }
+
+    .stat-value {
+      color: var(--text-main);
+    }
+
+    .dominant-emotion {
+      font-size: 1.5rem;
+      text-align: center;
+      color: var(--accent-amber);
+      margin: 10px 0;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .emotion-interpretation {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #aaa;
+      font-style: italic;
+    }
+
+    /* Emotion Bars */
+    .emotion-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .emotion-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.75rem;
+    }
+
+    .emotion-name {
+      width: 60px;
+      text-transform: capitalize;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--accent-cyan);
+      width: 0%;
+      transition: width 0.2s ease-out;
+    }
+
+    .bar-value {
+      width: 35px;
+      text-align: right;
+    }
+
+    /* History Log */
+    #history-log {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      max-height: 80px;
+      overflow-y: auto;
+      border-top: 1px dashed var(--border-cyan);
+      padding-top: 10px;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: #aaa;
+    }
+
+    /* Controls Bar */
+    #controls-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+    }
+
+    button {
+      background: rgba(0, 245, 255, 0.1);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      font-family: 'Space Mono', monospace;
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: var(--accent-cyan);
+      color: var(--bg-color);
+    }
+
+    button.active {
+      background: var(--accent-amber);
+      border-color: var(--accent-amber);
+      color: var(--bg-color);
+    }
+
+    /* Loading / Error States */
+    #overlay-message {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg-color);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 20px;
+    }
+
+    .loader {
+      border: 4px solid rgba(0, 245, 255, 0.2);
+      border-top: 4px solid var(--accent-cyan);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Hint text when no face */
+    #no-face-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.5rem;
+      color: var(--accent-amber);
+      background: var(--panel-bg);
+      padding: 15px 25px;
+      border-radius: 10px;
+      border: 1px solid var(--accent-amber);
+      z-index: 5;
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      #stats-panel {
+        top: auto;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 90%;
+      }
+
+      #controls-bar {
+        bottom: 10px;
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      button {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading / Error Overlay -->
+  <div id="overlay-message">
+    <div class="loader" id="loader-spinner"></div>
+    <h2 id="overlay-text">INITIALIZING SYSTEM...</h2>
+    <p id="overlay-subtext">Loading AI Models</p>
+    <button id="retry-btn" style="display: none;" onclick="location.reload()">REBOOT SYSTEM</button>
+  </div>
+
+  <div id="scanner-container">
+    <video id="webcam" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="no-face-hint">NO TARGET DETECTED</div>
+
+    <!-- Stats Panel -->
+    <div id="stats-panel" class="glass-panel">
+      <div class="stat-row">
+        <span class="stat-label">STATUS</span>
+        <span class="stat-value" id="val-status">ACTIVE</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">FACES DETECTED</span>
+        <span class="stat-value" id="val-faces">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">AGE</span>
+        <span class="stat-value" id="val-age">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">GENDER</span>
+        <span class="stat-value" id="val-gender">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">SYS_FPS</span>
+        <span class="stat-value" id="val-fps">0</span>
+      </div>
+
+      <div class="dominant-emotion" id="dom-emotion">
+        ANALYZING... 🤖
+      </div>
+      <div class="emotion-interpretation" id="emotion-interp">
+        Awaiting input...
+      </div>
+
+      <div class="emotion-bars" id="emotion-bars-container">
+        <!-- Bars injected via JS -->
+      </div>
+
+      <div id="history-log">
+        <div style="color: var(--accent-cyan); margin-bottom: 5px;">> EMOTION_LOG</div>
+        <!-- Logs injected via JS -->
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div id="controls-bar" class="glass-panel">
+      <button id="btn-toggle-det">DETECTION: ON</button>
+      <button id="btn-toggle-lm">LANDMARKS: ON</button>
+      <button id="btn-snapshot">SNAPSHOT</button>
+      <button id="btn-fullscreen">FULLSCREEN</button>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('overlay');
+    const overlayMsg = document.getElementById('overlay-message');
+    const overlayText = document.getElementById('overlay-text');
+    const overlaySubtext = document.getElementById('overlay-subtext');
+    const retryBtn = document.getElementById('retry-btn');
+    const loaderSpinner = document.getElementById('loader-spinner');
+    const noFaceHint = document.getElementById('no-face-hint');
+
+    // UI Elements
+    const valFaces = document.getElementById('val-faces');
+    const valFps = document.getElementById('val-fps');
+    const domEmotion = document.getElementById('dom-emotion');
+    const emotionInterp = document.getElementById('emotion-interp');
+    const barsContainer = document.getElementById('emotion-bars-container');
+    const historyLog = document.getElementById('history-log');
+
+    // Controls
+    const btnToggleDet = document.getElementById('btn-toggle-det');
+    const btnToggleLm = document.getElementById('btn-toggle-lm');
+    const btnSnapshot = document.getElementById('btn-snapshot');
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+
+    // State
+    let isDetectionOn = true;
+    let showLandmarks = true;
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+    let lastUiUpdateTime = 0;
+    let noFaceTimer = null;
+    let animationId = null;
+    let emotionHistory = [];
+
+    const emotionsList = ['happy', 'sad', 'angry', 'disgusted', 'fearful', 'surprised', 'neutral'];
+    const emojiMap = {
+      happy: '😊', sad: '😢', angry: '😠', disgusted: '🤢',
+      fearful: '😨', surprised: '😲', neutral: '😐'
+    };
+
+    // Initialize Emotion Bars
+    emotionsList.forEach(emo => {
+      const row = document.createElement('div');
+      row.className = 'emotion-bar-container';
+      row.innerHTML = `
+        <span class="emotion-name">${emo}</span>
+        <div class="bar-track">
+          <div class="bar-fill" id="bar-${emo}"></div>
+        </div>
+        <span class="bar-value" id="val-${emo}">0%</span>
+      `;
+      barsContainer.appendChild(row);
+    });
+
+    // Main Init Function
+    async function init() {
+      try {
+        // 1. Load Models
+        overlayText.innerText = "LOADING MODELS...";
+        overlaySubtext.innerText = "Connecting to CDN...";
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+          faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL)
+        ]);
+
+        // 2. Start Webcam
+        overlayText.innerText = "ACCESSING CAMERA...";
+        overlaySubtext.innerText = "Please allow camera permissions.";
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = stream;
+
+      } catch (err) {
+        console.error(err);
+        showError("INITIALIZATION FAILED", err.message || "Ensure camera permissions are granted.");
+      }
+    }
+
+    function showError(title, msg) {
+      loaderSpinner.style.display = 'none';
+      overlayText.innerText = title;
+      overlayText.style.color = 'var(--accent-amber)';
+      overlaySubtext.innerText = msg;
+      retryBtn.style.display = 'block';
+    }
+
+    video.addEventListener('play', () => {
+      // Setup canvas
+      const displaySize = { width: video.videoWidth, height: video.videoHeight };
+      faceapi.matchDimensions(canvas, displaySize);
+
+      // Hide overlay
+      overlayMsg.style.display = 'none';
+
+      // Start Detection Loop
+      detectLoop();
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      video.play();
+    });
+
+    async function detectLoop() {
+      if (!isDetectionOn || video.paused || video.ended) {
+        animationId = requestAnimationFrame(detectLoop);
+        return;
+      }
+
+      // Calculate FPS
+      const now = performance.now();
+      frameCount++;
+      if (now - lastFrameTime >= 1000) {
+        valFps.innerText = frameCount;
+        frameCount = 0;
+        lastFrameTime = now;
+      }
+
+      const displaySize = { width: video.videoWidth, height: video.videoHeight };
+
+      try {
+        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks(true)
+          .withFaceExpressions()
+          .withAgeAndGender();
+
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (resizedDetections.length > 0) {
+          clearTimeout(noFaceTimer);
+          noFaceHint.style.display = 'none';
+
+          // Draw boxes + landmarks inside mirrored context (no label — text would flip)
+          ctx.save();
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+          resizedDetections.forEach(det => {
+            new faceapi.draw.DrawBox(det.detection.box).draw(canvas);
+          });
+          if (showLandmarks) {
+            faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+          }
+          ctx.restore();
+
+          // Draw score labels in normal orientation at mirrored x position
+          ctx.font = 'bold 13px "Space Mono", monospace';
+          resizedDetections.forEach(det => {
+            const score = det.detection.score.toFixed(2);
+            const box = det.detection.box;
+            const lx = canvas.width - box.x - box.width;
+            const textW = ctx.measureText(score).width + 8;
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.85)';
+            ctx.fillRect(lx, box.y - 20, textW, 20);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(score, lx + 4, box.y - 5);
+          });
+
+          // Debounce UI Updates
+          if (now - lastUiUpdateTime > 300) {
+            updateUI(resizedDetections);
+            lastUiUpdateTime = now;
+          }
+        } else {
+          if (now - lastUiUpdateTime > 300) {
+            valFaces.innerText = '0';
+            resetBars();
+            lastUiUpdateTime = now;
+          }
+          if (noFaceHint.style.display !== 'block') {
+            noFaceTimer = setTimeout(() => {
+              noFaceHint.style.display = 'block';
+            }, 3000);
+          }
+        }
+
+      } catch (e) {
+        console.error("Detection Error:", e);
+      }
+
+      animationId = requestAnimationFrame(detectLoop);
+    }
+
+    function updateUI(detections) {
+      valFaces.innerText = detections.length;
+
+      // Get primary face
+      const face = detections[0];
+      const expressions = face.expressions;
+
+      // Age & Gender
+      if (face.age !== undefined) {
+        document.getElementById('val-age').innerText = `~${Math.round(face.age)} yrs`;
+      }
+      if (face.gender) {
+        const gIcon = face.gender === 'male' ? '♂' : '♀';
+        const gPct = Math.round((face.genderProbability || 0) * 100);
+        document.getElementById('val-gender').innerText = `${gIcon} ${face.gender} (${gPct}%)`;
+      }
+
+      // Find dominant emotion
+      let domEmo = 'neutral';
+      let maxScore = 0;
+      for (const [emo, score] of Object.entries(expressions)) {
+        if (score > maxScore) {
+          maxScore = score;
+          domEmo = emo;
+        }
+
+        // Update bars
+        const pct = Math.round(score * 100);
+        document.getElementById(`bar-${emo}`).style.width = `${pct}%`;
+        document.getElementById(`val-${emo}`).innerText = `${pct}%`;
+      }
+
+      const domPct = Math.round(maxScore * 100);
+      domEmotion.innerText = `${domEmo} ${emojiMap[domEmo]} (${domPct}%)`;
+
+      // Interpretation
+      let interp = "Calm and composed 🧘";
+      if (domEmo === 'happy' || domEmo === 'surprised') interp = "You look joyful! 🌟";
+      else if (domEmo === 'sad' || domEmo === 'fearful') interp = "Seems like a tough moment 💙";
+      else if (domEmo === 'angry' || domEmo === 'disgusted') interp = "Feeling intense? 🔥";
+      emotionInterp.innerText = interp;
+
+      // History Log (add only if changed dominant emotion)
+      const lastEmo = emotionHistory[0];
+      if (lastEmo !== domEmo) {
+        emotionHistory.unshift(domEmo);
+        if (emotionHistory.length > 5) emotionHistory.pop();
+
+        const timestamp = new Date().toLocaleTimeString();
+        const logItem = document.createElement('div');
+        logItem.className = 'history-item';
+        logItem.innerHTML = `<span>[${timestamp}]</span> <span>${domEmo.toUpperCase()} ${emojiMap[domEmo]}</span>`;
+
+        // Insert after title
+        const title = historyLog.firstElementChild;
+        historyLog.insertBefore(logItem, title.nextSibling);
+
+        // keep max 5 elements (title + 5 logs)
+        while (historyLog.children.length > 6) {
+          historyLog.removeChild(historyLog.lastChild);
+        }
+      }
+    }
+
+    function resetBars() {
+      domEmotion.innerText = "NO TARGET 🚫";
+      emotionInterp.innerText = "Awaiting face...";
+      emotionsList.forEach(emo => {
+        document.getElementById(`bar-${emo}`).style.width = `0%`;
+        document.getElementById(`val-${emo}`).innerText = `0%`;
+      });
+    }
+
+    // Controls Logic
+    btnToggleDet.addEventListener('click', () => {
+      isDetectionOn = !isDetectionOn;
+      btnToggleDet.innerText = `DETECTION: ${isDetectionOn ? 'ON' : 'OFF'}`;
+      btnToggleDet.classList.toggle('active', !isDetectionOn);
+      if (!isDetectionOn) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        valFaces.innerText = '0';
+        resetBars();
+        noFaceHint.style.display = 'none';
+        clearTimeout(noFaceTimer);
+      }
+    });
+
+    btnToggleLm.addEventListener('click', () => {
+      showLandmarks = !showLandmarks;
+      btnToggleLm.innerText = `LANDMARKS: ${showLandmarks ? 'ON' : 'OFF'}`;
+      btnToggleLm.classList.toggle('active', !showLandmarks);
+    });
+
+    btnSnapshot.addEventListener('click', () => {
+      const sw = video.videoWidth;
+      const sh = video.videoHeight;
+      const snapCanvas = document.createElement('canvas');
+      snapCanvas.width = sw;
+      snapCanvas.height = sh;
+      const ctx = snapCanvas.getContext('2d');
+
+      // 1. Draw mirrored video
+      ctx.save();
+      ctx.translate(sw, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, sw, sh);
+      ctx.restore();
+
+      // 2. Draw detection overlay (pixels already contain mirrored drawing)
+      ctx.drawImage(canvas, 0, 0, sw, sh);
+
+      // 3. Gather live stats from DOM
+      const stats = [
+        { label: 'STATUS',  value: document.getElementById('val-status').innerText },
+        { label: 'FACES',   value: document.getElementById('val-faces').innerText },
+        { label: 'AGE',     value: document.getElementById('val-age').innerText },
+        { label: 'GENDER',  value: document.getElementById('val-gender').innerText },
+        { label: 'FPS',     value: document.getElementById('val-fps').innerText },
+      ];
+      const domEmoText  = document.getElementById('dom-emotion').innerText.trim();
+      const interpText  = document.getElementById('emotion-interp').innerText.trim();
+      const emoData = emotionsList.map(e => ({
+        name: e,
+        pct: parseInt(document.getElementById(`val-${e}`).innerText) || 0
+      }));
+      // History entries (skip the "> EMOTION_LOG" header div)
+      const histItems = [...document.querySelectorAll('#history-log .history-item')]
+        .slice(0, 5)
+        .map(el => el.innerText.replace(/\s+/g, ' ').trim());
+
+      // 4. Draw panel
+      const px = 20, py = 20, pw = 310, pad = 14;
+      const rowH = 22, barH = 8, barGap = 5;
+      const panelH = pad
+        + stats.length * rowH + 12          // stat rows
+        + 26 + 18 + 10                      // dominant emotion + interp
+        + emotionsList.length * (barH + barGap + 4) + 8  // bars
+        + (histItems.length ? histItems.length * 17 + 18 : 0) // history
+        + 20 + pad;                         // timestamp + bottom padding
+
+      // Background
+      ctx.fillStyle = 'rgba(13, 15, 26, 0.82)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(px, py, pw, panelH, 12)
+                    : ctx.rect(px, py, pw, panelH);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 245, 255, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      let y = py + pad + 13;
+
+      // Stat rows
+      stats.forEach(({ label, value }) => {
+        ctx.font = 'bold 12px "Courier New", monospace';
+        ctx.fillStyle = '#00f5ff';
+        ctx.fillText(label, px + pad, y);
+        ctx.fillStyle = '#e0e0e0';
+        ctx.textAlign = 'right';
+        ctx.fillText(value, px + pw - pad, y);
+        ctx.textAlign = 'left';
+        y += rowH;
+      });
+
+      y += 10;
+      // Separator
+      ctx.strokeStyle = 'rgba(0,245,255,0.25)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(px + pad, y - 6); ctx.lineTo(px + pw - pad, y - 6); ctx.stroke();
+
+      // Dominant emotion
+      ctx.font = 'bold 15px "Courier New", monospace';
+      ctx.fillStyle = '#ffb347';
+      ctx.fillText(domEmoText, px + pad, y + 6);
+      y += 24;
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText(interpText, px + pad, y);
+      y += 18;
+
+      // Emotion bars
+      emotionsList.forEach(emo => {
+        const pct = emoData.find(e => e.name === emo)?.pct || 0;
+        const barX = px + pad + 72;
+        const barW = pw - pad - 72 - 38;
+
+        ctx.font = '10px "Courier New", monospace';
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillText(emo, px + pad, y + barH);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(barX, y, barW, barH);
+        ctx.fillStyle = '#00f5ff';
+        ctx.fillRect(barX, y, barW * (pct / 100), barH);
+
+        ctx.fillStyle = '#e0e0e0';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${pct}%`, px + pw - pad, y + barH);
+        ctx.textAlign = 'left';
+
+        y += barH + barGap + 4;
+      });
+
+      // History log
+      if (histItems.length) {
+        y += 6;
+        ctx.strokeStyle = 'rgba(0,245,255,0.25)';
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(px + pad, y); ctx.lineTo(px + pw - pad, y); ctx.stroke();
+        ctx.setLineDash([]);
+        y += 14;
+        ctx.font = 'bold 10px "Courier New", monospace';
+        ctx.fillStyle = '#00f5ff';
+        ctx.fillText('> EMOTION_LOG', px + pad, y);
+        y += 15;
+        histItems.forEach(entry => {
+          ctx.font = '10px "Courier New", monospace';
+          ctx.fillStyle = '#aaaaaa';
+          ctx.fillText(entry, px + pad, y);
+          y += 17;
+        });
+      }
+
+      // Timestamp
+      y += 4;
+      ctx.font = '10px "Courier New", monospace';
+      ctx.fillStyle = 'rgba(0,245,255,0.55)';
+      ctx.fillText(`CAPTURED: ${new Date().toLocaleString()}`, px + pad, y + 12);
+
+      // Download
+      const dataUrl = snapCanvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `biometric-snap-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    });
+
+    btnFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+        btnFullscreen.innerText = "EXIT FULL";
+        btnFullscreen.classList.add('active');
+      } else {
+        document.exitFullscreen();
+        btnFullscreen.innerText = "FULLSCREEN";
+        btnFullscreen.classList.remove('active');
+      }
+    });
+
+    // Start
+    init();
+
+  </script>
+</body>
+
+</html>
